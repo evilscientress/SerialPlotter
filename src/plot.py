@@ -74,8 +74,8 @@ class SerialPlotter(QtWidgets.QMainWindow):
         if len(self.data) < num_elements:
             if len(self.data) >= 1:
                 # we need to pad the newly added lines
-                padded = [None] * len(self.data[0])
-                for i in range(len(self.data) - num_elements):
+                padded = [0] * len(self.data[0])
+                for i in range(num_elements - len(self.data)):
                     self.data.append(padded.copy())
             else:
                 for i in range(num_elements):
