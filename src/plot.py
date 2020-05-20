@@ -9,11 +9,11 @@ from PyQt5.QtCore import Qt
 
 class SerialPlotter(QtWidgets.QMainWindow):
 
-    def __init__(self, port, baud=115200, num_values=255, **kwargs):
+    def __init__(self, port, baud=115200, samples=255, min_value=0, max_value=1023, **kwargs):
         super(SerialPlotter, self).__init__(**kwargs)
         self._serial_port = port
         self._serial_port_baud = baud
-        self._num_values = num_values
+        self.samples = samples
 
         self.series = []
         self.data = []
@@ -34,11 +34,11 @@ class SerialPlotter(QtWidgets.QMainWindow):
 
         # set up axis
         self.x_axis = QtChart.QValueAxis()
-        self.x_axis.setRange(0, self._num_values)
+        self.x_axis.setRange(0, self.samples)
         self.x_axis.setTitleText('Samples')
         self.x_axis.setLabelFormat('%i')
         self.y_axis = QtChart.QValueAxis()
-        self.y_axis.setRange(0, 1023)
+        self.y_axis.setRange(min_value, max_value)
         self.y_axis.setTitleText('Values')
         self.chart.addAxis(self.x_axis, Qt.AlignBottom)
         self.chart.addAxis(self.y_axis, Qt.AlignLeft)
@@ -81,9 +81,9 @@ class SerialPlotter(QtWidgets.QMainWindow):
                 for i in range(num_elements):
                     self.data.append([])
 
-        num_values_current = len(self.data[0])
+        samples_current = len(self.data[0])
         for i in range(num_elements):
-            if num_values_current >= self._num_values:
+            if samples_current >= self.samples:
                 self.data[i] = self.data[i][1:] + [new_data[i]]
             else:
                 self.data[i].append(new_data[i])
@@ -127,10 +127,15 @@ def check_serial_port(port):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('port', help='The serial port to listen to for data to plot', type=check_serial_port)
-    parser.add_argument('-b', '--baud', help='The baud rate for the serial port', default=115200, type=int)
+    parser.add_argument('port', type=check_serial_port, help='The serial port to listen to for data to plot')
+    parser.add_argument('-b', '--baud', type=int, default=115200,
+                        help='The baud rate for the serial port, defaults to 115200')
+    parser.add_argument('-s', '--samples', type=int, default=256,
+                        help='The number of samples to buffer and display, defaults to 256')
+    parser.add_argument('--min', type=int, default=0, help='The minium value to display, defaults to 0')
+    parser.add_argument('--max', type=int, default=1023, help='The maximum value to display, defaults to 1023')
     args = parser.parse_args()
 
     app = QtWidgets.QApplication(sys.argv)
-    w = SerialPlotter(args.port)
+    w = SerialPlotter(args.port, baud=args.baud, samples=args.samples, min_value=args.min, max_value=args.max)
     sys.exit(app.exec_())
