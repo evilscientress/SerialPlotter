@@ -3,16 +3,8 @@ import os
 import os.path
 import sys
 
-import matplotlib
-import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
-from matplotlib.figure import Figure
-from PyQt5 import QtCore, QtSerialPort, QtWidgets
-
-matplotlib.use('qt5agg')
-plt.style.use('fivethirtyeight')
+from PyQt5 import QtChart, QtCore, QtGui, QtSerialPort, QtWidgets
+from PyQt5.QtCore import Qt
 
 
 class SerialPlotter(QtWidgets.QMainWindow):
@@ -23,34 +15,35 @@ class SerialPlotter(QtWidgets.QMainWindow):
         self._serial_port_baud = baud
         self._num_values = num_values
 
-        self.lines = []
+        self.series = []
         self.data = []
 
+        # set up chart
         self.setWindowTitle('Serial Plotter')
+        self.setContentsMargins(0, 0, 0, 0)
+        self.chart = QtChart.QChart()
+        self.chart.setTheme(QtChart.QChart.ChartThemeDark)
+        # remove the annoying white border
+        self.chart.layout().setContentsMargins(0, 0, 0, 0)
+        self.chart.setBackgroundRoundness(0)
 
-        # Create the maptlotlib FigureCanvas object,
-        # and define a single set of axes as self._axes.
-        self._figure = Figure()
-        self._axes = self._figure.add_subplot(111)
-        self._axes: Axes
-        self._axes.set_xlabel('Samples')
-        self._axes.set_ylabel('Values')
-        self._axes.set_xlim(0, self._num_values)
-        self._axes.set_ylim(0, 1024)
-        self.lines.append(self._axes.plot([], [], label='Ch 0')[0])
-        self._canvas = FigureCanvasQTAgg(self._figure)
+        # set up chart view
+        self.chart_view = QtChart.QChartView(self.chart)
+        self.chart_view.setRenderHint(QtGui.QPainter.Antialiasing)
+        self.chart_view.setMinimumSize(800, 600)
 
-        # Create toolbar, passing _canvas as first parament, parent (self, the SerialPlotter) as second.
-        toolbar = NavigationToolbar2QT(self._canvas, self)
+        # set up axis
+        self.x_axis = QtChart.QValueAxis()
+        self.x_axis.setRange(0, self._num_values)
+        self.x_axis.setTitleText('Samples')
+        self.x_axis.setLabelFormat('%i')
+        self.y_axis = QtChart.QValueAxis()
+        self.y_axis.setRange(0, 1023)
+        self.y_axis.setTitleText('Values')
+        self.chart.addAxis(self.x_axis, Qt.AlignBottom)
+        self.chart.addAxis(self.y_axis, Qt.AlignLeft)
 
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(toolbar)
-        layout.addWidget(self._canvas)
-
-        # Create a placeholder widget to hold our toolbar and _canvas.
-        widget = QtWidgets.QWidget()
-        widget.setLayout(layout)
-        self.setCentralWidget(widget)
+        self.setCentralWidget(self.chart_view)
 
         # Setup the serial port
         self.serial = QtSerialPort.QSerialPort(
@@ -64,11 +57,21 @@ class SerialPlotter(QtWidgets.QMainWindow):
 
         self.show()
 
+    def add_series(self, name=None):
+        # add a series
+        series = QtChart.QLineSeries()
+        self.chart.addSeries(series)
+        series.attachAxis(self.x_axis)
+        series.attachAxis(self.y_axis)
+        series.setUseOpenGL(True)
+        if name:
+            series.setName(name)
+        self.series.append(series)
+
     def append_data(self, new_data, auto_update=True):
         num_elements = len(new_data)
 
         if len(self.data) < num_elements:
-            """
             if len(self.data) >= 1:
                 # we need to pad the newly added lines
                 padded = [None] * len(self.data[0])
@@ -77,23 +80,13 @@ class SerialPlotter(QtWidgets.QMainWindow):
             else:
                 for i in range(num_elements):
                     self.data.append([])
-            """
-            for i in range(num_elements - len(self.data)):
-                self.data.append(np.zeros(self._num_values))
 
-        """
         num_values_current = len(self.data[0])
         for i in range(num_elements):
             if num_values_current >= self._num_values:
                 self.data[i] = self.data[i][1:] + [new_data[i]]
             else:
                 self.data[i].append(new_data[i])
-        """
-        for i in range(len(self.data)):
-            dataset = np.roll(self.data[i], -1)
-            dataset: np.ndarray
-            dataset[-1] = new_data[i]
-            self.data[i] = dataset
 
         if auto_update:
             self.update_plot()
@@ -112,28 +105,15 @@ class SerialPlotter(QtWidgets.QMainWindow):
 
     @QtCore.pyqtSlot()
     def update_plot(self):
-        if self.lines:
-            # We have a reference, we can use it to update the data for those lines.
-            num_values_current = len(self.data[0])
-            for i in range(len(self.lines)):
-                line = self.lines[i]
-                if num_values_current == len(line.get_xdata()):
-                    line.set_ydata(self.data[i])
-                else:
-                    line.set_data(range(num_values_current), self.data[i])
+        if not self.data:
+            return
+        # add all series not yet present
+        for i in range(len(self.series), len(self.data)):
+            self.add_series(name='Ch %d' % i)
 
-        # add all lines not yet present
-        lines_added = False
-        for i in range(len(self.lines), len(self.data)):
-            print('adding new line')
-            self.lines.append(self._axes.plot(self.data[i], label=('Ch %d' % i))[0])
-            lines_added = True
-
-        if lines_added:
-            self._axes.legend(loc='upper left')
-
-        # Trigger the _canvas to update and redraw.
-        self._canvas.draw()
+        # update the series data
+        for i in range(len(self.series)):
+            self.series[i].replace([QtCore.QPoint(j, self.data[i][j]) for j in range(len(self.data[i]))])
 
 
 def check_serial_port(port):
