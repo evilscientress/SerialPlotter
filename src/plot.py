@@ -101,7 +101,8 @@ class SerialPlotter(QtWidgets.QMainWindow):
             else:
                 data = list([int(i) for i in data])
 
-            self.append_data(data)
+            if data:
+                self.append_data(data)
 
     @QtCore.pyqtSlot()
     def update_plot(self):
